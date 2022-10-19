@@ -37,7 +37,6 @@ async def vectorize_text_medium(text: str):
 @app.get("/lvec/")
 async def vectorize_text_large(text: str):
     doc = nlp_lg(text)
-    print(doc.vector.size)
     return doc.vector.tolist()
 
 @app.get("/ssim/")

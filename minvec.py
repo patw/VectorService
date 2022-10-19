@@ -14,7 +14,6 @@ async def root():
 @app.get("/vec/")
 async def vectorize_text_large(text: str):
     doc = nlp_lg(text)
-    print(doc.vector.size)
     return doc.vector.tolist()
 
 @app.get("/sim/")
