@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import spacy
+from sklearn.preprocessing import normalize
 
 # Load the spacy model that you have installed
 nlp_small = spacy.load('en_core_web_sm')
@@ -20,24 +21,39 @@ app = FastAPI(
     }
 )
 
+# L2 normalization on vectors using sklearn utility function
+def vector_normalize(vec):
+    shaped = vec.reshape(-1,1)
+    normed = normalize(shaped,axis=0)
+    return normed.reshape(1,-1)[0]
+
 @app.get("/")
 async def root():
     return {"message": "Feed me text and I pop out vector clouds. See /docs for more info."}
 
 @app.get("/svec/")
-async def vectorize_text_small(text: str):
+async def vectorize_text_small(text: str, l2: bool = False):
     doc = nlp_small(text)
-    return doc.vector.tolist() 
+    if l2:
+        return vector_normalize(doc.vector).tolist()
+    else:
+        return doc.vector.tolist() 
 
 @app.get("/mvec/")
-async def vectorize_text_medium(text: str):
+async def vectorize_text_medium(text: str, l2: bool = False):
     doc = nlp_medium(text)
-    return doc.vector.tolist()
+    if l2:
+        return vector_normalize(doc.vector).tolist()
+    else:
+        return doc.vector.tolist() 
 
 @app.get("/lvec/")
-async def vectorize_text_large(text: str):
+async def vectorize_text_large(text: str, l2: bool = False):
     doc = nlp_lg(text)
-    return doc.vector.tolist()
+    if l2:
+        return vector_normalize(doc.vector).tolist()
+    else:
+        return doc.vector.tolist() 
 
 @app.get("/ssim/")
 async def similarity_text_small(t1: str, t2: str):

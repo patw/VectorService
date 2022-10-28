@@ -10,6 +10,7 @@ SimDiff endpoint will allow you to compare the outputs of all 3 models when comp
 ```
 pip install spacy
 pip install fastapi[all]
+pip install sklearn
 
 python -m spacy download en_core_web_sm
 python -m spacy download en_core_web_md
