@@ -1,12 +1,14 @@
 from fastapi import FastAPI
 import spacy
 from sklearn.preprocessing import normalize
+import numpy
 
 # Load the spacy model that you have installed
 nlp_small = spacy.load('en_core_web_sm')
 nlp_medium = spacy.load('en_core_web_md')
 nlp_lg = spacy.load('en_core_web_lg')
 
+# Fast API init
 app = FastAPI(
         title="TextVectorizor",
         description="Create vector clouds using the Spacy English language small (96d), medium (300d) and large (300d) models. Use the similarity tools to compare words and phrases.",
@@ -26,6 +28,11 @@ def vector_normalize(vec):
     shaped = vec.reshape(-1,1)
     normed = normalize(shaped,axis=0)
     return normed.reshape(1,-1)[0]
+
+# Most Similar Word Function (stolen from Spacy github issues!)
+def most_similar_words(nlp, word, num_words):
+    ms = nlp.vocab.vectors.most_similar(numpy.asarray([nlp.vocab.vectors[nlp.vocab.strings[word]]]), n=num_words)
+    return [nlp.vocab.strings[w] for w in ms[0][0]]
 
 @app.get("/")
 async def root():
@@ -72,6 +79,14 @@ async def similarity_text_large(t1: str, t2: str):
     d1 = nlp_lg(t1)
     d2 = nlp_lg(t2)
     return d1.similarity(d2)
+
+@app.get("/msyn/")
+async def synonyms_medium(text: str):
+    return most_similar_words(nlp_medium, text, 10)
+
+@app.get("/lsyn/")
+async def synonyms_large(text: str):
+    return most_similar_words(nlp_lg, text, 10)
 
 @app.get("/simdiff/")
 async def similarity_model_differences(t1: str, t2: str):
