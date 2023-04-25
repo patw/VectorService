@@ -6,3 +6,6 @@ fastapi
 uvicorn
 scikit-learn
 numpy
+sentence-transformers
+transformers
+torch

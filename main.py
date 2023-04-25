@@ -2,16 +2,28 @@ from fastapi import FastAPI
 import spacy
 from sklearn.preprocessing import normalize
 import numpy
+from sentence_transformers import SentenceTransformer
+from scipy.spatial.distance import euclidean
+import torch
+from transformers import BertModel, BertTokenizer
 
 # Load the spacy model that you have installed
 nlp_small = spacy.load('en_core_web_sm')
 nlp_medium = spacy.load('en_core_web_md')
 nlp_lg = spacy.load('en_core_web_lg')
 
+# Load a huggingface 384d sentence transformer
+st_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+
+# Load BERT sentence model
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+bert_model = BertModel.from_pretrained('bert-base-uncased').to(device)
+
 # Fast API init
 app = FastAPI(
         title="TextVectorizor",
-        description="Create vector clouds using the Spacy English language small (96d), medium (300d) and large (300d) models. Use the similarity tools to compare words and phrases.",
+        description="Create dense vectors using the Spacy English language small (96d), medium (300d) and large (300d) models.  As well as Huggingface Sentence Encoder (384d) and google BERT (768d). Use the similarity tools to compare words and phrases.",
         version="1.0",
         contact={
             "name": "Pat Wendorf",
@@ -23,6 +35,23 @@ app = FastAPI(
     }
 )
 
+# Perform cosine similarity check between two vectors and output the measurement
+def similarity(v1, v2):
+    # Define two dense vectors as NumPy arrays
+    vector1 = numpy.array(v1)
+    vector2 = numpy.array(v2)
+
+    # Compute Euclidean distance
+    euclidean_distance = euclidean(vector1, vector2)
+
+    # Compute dot product
+    dot_product = numpy.dot(vector1, vector2)
+
+    # Compute cosine similarity
+    cosine_similarity = numpy.dot(vector1, vector2) / (numpy.linalg.norm(vector1) * numpy.linalg.norm(vector2))
+
+    return {"euclidean": euclidean_distance, "dotProduct": dot_product, "cosine": cosine_similarity}
+
 # L2 normalization on vectors using sklearn utility function
 def vector_normalize(vec):
     shaped = vec.reshape(-1,1)
@@ -33,6 +62,18 @@ def vector_normalize(vec):
 def most_similar_words(nlp, word, num_words):
     ms = nlp.vocab.vectors.most_similar(numpy.asarray([nlp.vocab.vectors[nlp.vocab.strings[word]]]), n=num_words)
     return [nlp.vocab.strings[w] for w in ms[0][0]]
+
+# BERT is more complex than the others...
+def bert_nlp(text):
+    # Bert wants to batch process, so just slap a single one in here
+    inputs = [text]
+    input_ids = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors='pt')['input_ids'].to(device)
+    attention_mask = (input_ids != 0).to(device)
+    outputs = bert_model(input_ids, attention_mask)
+    embeddings = outputs.last_hidden_state
+    cls_embeddings = embeddings[:, 0, :]
+    embedding_list = cls_embeddings.tolist()
+    return numpy.array(embedding_list[0])
 
 @app.get("/")
 async def root():
@@ -60,7 +101,23 @@ async def vectorize_text_large(text: str, l2: bool = False):
     if l2:
         return vector_normalize(doc.vector).tolist()
     else:
-        return doc.vector.tolist() 
+        return doc.vector.tolist()
+    
+@app.get("/stvec/")
+async def vectorize_text_st(text: str, l2: bool = False):
+    doc = st_model.encode(text)
+    if l2:
+        return vector_normalize(doc).tolist()
+    else:
+        return doc.tolist()
+    
+@app.get("/bertvec/")
+async def vectorize_text_bert(text: str, l2: bool = False):
+    doc = bert_nlp(text)
+    if l2:
+        return vector_normalize(doc).tolist()
+    else:
+        return doc.tolist()
 
 @app.get("/ssim/")
 async def similarity_text_small(t1: str, t2: str):
@@ -90,19 +147,38 @@ async def synonyms_large(text: str):
 
 @app.get("/simdiff/")
 async def similarity_model_differences(t1: str, t2: str):
-    # Small Model
-    d1 = nlp_small(t1)
-    d2 = nlp_small(t2)
-    s1 = d1.similarity(d2)
 
-    # Medium Model
-    d1 = nlp_medium(t1)
-    d2 = nlp_medium(t2)
-    s2 = d1.similarity(d2)
+    # Similiarty output
+    sim_output = {"string1": t1, "string2": t2}
 
-    # Large Model
-    d1 = nlp_lg(t1)
-    d2 = nlp_lg(t2)
-    s3 = d1.similarity(d2)
+    # Spacy Small
+    v1 = nlp_small(t1).vector.tolist()
+    v2 = nlp_small(t2).vector.tolist()
+    spacy_small_sim = similarity(v1, v2)
+    sim_output["spacy_small"] = spacy_small_sim
 
-    return {'small': s1, 'medium': s2, 'large': s3}
+    # Spacy Medium
+    v1 = nlp_medium(t1).vector.tolist()
+    v2 = nlp_medium(t2).vector.tolist()
+    spacy_medium_sim = similarity(v1, v2)
+    sim_output["spacy_medium"] = spacy_medium_sim
+
+    # Spacy Large
+    v1 = nlp_lg(t1).vector.tolist()
+    v2 = nlp_lg(t2).vector.tolist()
+    spacy_large_sim = similarity(v1, v2)
+    sim_output["spacy_large"] = spacy_large_sim
+
+    # Sentence encode
+    v1 = st_model.encode(t1).tolist()
+    v2 = st_model.encode(t2).tolist()
+    sentence_encoder_sim = similarity(v1, v2)
+    sim_output["sentence_encoder"] = sentence_encoder_sim
+
+     # BERT encode
+    v1 = bert_nlp(t1).tolist()
+    v2 = bert_nlp(t2).tolist()
+    bert_sim = similarity(v1, v2)
+    sim_output["bert"] = bert_sim
+
+    return sim_output
