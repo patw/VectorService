@@ -16,7 +16,7 @@ echo "Starting container"
 echo
 docker stop vectorservice
 docker rm vectorservice
-docker run -t -i -d -p 8000:8000 --name vectorservice --restart unless-stopped graboskyc/vectorservice:latest
+docker run -t -i -d -p 80:80 --name vectorservice --restart unless-stopped graboskyc/vectorservice:latest
 
 echo
 echo "+================================"
