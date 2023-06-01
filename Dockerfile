@@ -46,7 +46,7 @@ RUN cd /opt/splade && python setup.py install
 
 RUN cd /opt/vectorservice
 WORKDIR /opt/vectorservice
-ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
 #CMD ["/bin/bash"]
 
-EXPOSE 8000
+EXPOSE 80
