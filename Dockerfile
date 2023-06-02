@@ -42,10 +42,11 @@ RUN python -m spacy download en_core_web_lg
 RUN git clone https://github.com/naver/splade.git /opt/splade
 RUN cd /opt/splade && python setup.py install
 
-# TODO copy and run a pre-setup file to download everything now vs first contain run
+COPY ./preloadpackages.py /opt/vectorservice/preloadpackages.py
 
 RUN cd /opt/vectorservice
 WORKDIR /opt/vectorservice
+RUN python3 preloadpackages.py
 ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
 #CMD ["/bin/bash"]
 
