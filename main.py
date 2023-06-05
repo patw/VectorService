@@ -16,6 +16,9 @@ nlp_lg = spacy.load('en_core_web_lg')
 # Load a huggingface 384d sentence transformer
 st_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
+# Load a huggingface 384d sentence transformer
+st_768_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+
 # Load BERT sentence model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -120,6 +123,14 @@ async def vectorize_text_st(text: str, l2: bool = False):
     else:
         return doc.tolist()
     
+@app.get("/stvec768/")
+async def vectorize_text_sentence_transformer_768(text: str, l2: bool = False):
+    doc = st_768_model.encode(text)
+    if l2:
+        return vector_normalize(doc).tolist()
+    else:
+        return doc.tolist()
+    
 @app.get("/bertvec/")
 async def vectorize_text_bert(text: str, l2: bool = False):
     doc = bert_nlp(text)
@@ -201,7 +212,13 @@ async def similarity_model_differences(t1: str, t2: str):
     v1 = st_model.encode(t1).tolist()
     v2 = st_model.encode(t2).tolist()
     sentence_encoder_sim = similarity(v1, v2)
-    sim_output["sentence_encoder"] = sentence_encoder_sim
+    sim_output["sentence_transformer"] = sentence_encoder_sim
+
+    # Sentence transformer 768 encode
+    v1 = st_768_model.encode(t1).tolist()
+    v2 = st_768_model.encode(t2).tolist()
+    sentence_encoder_sim = similarity(v1, v2)
+    sim_output["sentence_transformer_768"] = sentence_encoder_sim
 
      # BERT encode
     v1 = bert_nlp(t1).tolist()
