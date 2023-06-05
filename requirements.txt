@@ -9,3 +9,4 @@ numpy
 sentence-transformers
 transformers
 torch
+setuptools-rust
