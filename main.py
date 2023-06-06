@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 import spacy
+import string
+from spacy.lang.en.stop_words import STOP_WORDS
 from sklearn.preprocessing import normalize
 import numpy
 from sentence_transformers import SentenceTransformer
@@ -7,6 +9,7 @@ from scipy.spatial.distance import euclidean
 import torch
 from transformers import BertModel, BertTokenizer, AutoModelForMaskedLM, AutoTokenizer
 from splade.models.transformer_rep import Splade
+from InstructorEmbedding import INSTRUCTOR
 
 # Load the spacy model that you have installed
 nlp_small = spacy.load('en_core_web_sm')
@@ -24,6 +27,9 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 bert_model = BertModel.from_pretrained('bert-base-uncased').to(device)
 
+# Instructor model
+instructor_model = INSTRUCTOR('hkunlp/instructor-large')
+
 # Splade Model
 model_type_or_dir = "naver/splade-cocondenser-ensembledistil"
 
@@ -35,7 +41,7 @@ reverse_voc = {v: k for k, v in tokenizer.vocab.items()}
 # Fast API init
 app = FastAPI(
         title="TextVectorizor",
-        description="Create dense vectors using the Spacy English language small (96d), medium (300d) and large (300d) models.  As well as Huggingface Sentence Encoder (384d) and google BERT (768d). Use the similarity tools to compare words and phrases.",
+        description="Create dense vectors using Spacy (small, medium, large), pretrined BERT, all-MiniLM-L6-v2 (stvec) and all-mpnet-base-v2 (st768vec) models. Use the similarity tools to compare words and sentences.",
         version="1.0",
         contact={
             "name": "Pat Wendorf",
@@ -70,6 +76,12 @@ def vector_normalize(vec):
     normed = normalize(shaped,axis=0)
     return normed.reshape(1,-1)[0]
 
+# Remove Stopwords
+def remove_stopwords(text):
+    doc = nlp_small(text)
+    tokens = [token.text for token in doc if token.text.lower() not in STOP_WORDS and token.text not in string.punctuation]
+    return ' '.join(tokens)
+
 # Most Similar Word Function (stolen from Spacy github issues!)
 def most_similar_words(nlp, word, num_words):
     ms = nlp.vocab.vectors.most_similar(numpy.asarray([nlp.vocab.vectors[nlp.vocab.strings[word]]]), n=num_words)
@@ -92,7 +104,9 @@ async def root():
     return {"message": "Feed me text and I pop out vector clouds. See /docs for more info."}
 
 @app.get("/svec/")
-async def vectorize_text_small(text: str, l2: bool = False):
+async def vectorize_text_small(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = nlp_small(text)
     if l2:
         return vector_normalize(doc.vector).tolist()
@@ -100,7 +114,9 @@ async def vectorize_text_small(text: str, l2: bool = False):
         return doc.vector.tolist() 
 
 @app.get("/mvec/")
-async def vectorize_text_medium(text: str, l2: bool = False):
+async def vectorize_text_medium(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = nlp_medium(text)
     if l2:
         return vector_normalize(doc.vector).tolist()
@@ -108,7 +124,9 @@ async def vectorize_text_medium(text: str, l2: bool = False):
         return doc.vector.tolist() 
 
 @app.get("/lvec/")
-async def vectorize_text_large(text: str, l2: bool = False):
+async def vectorize_text_large(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = nlp_lg(text)
     if l2:
         return vector_normalize(doc.vector).tolist()
@@ -116,7 +134,9 @@ async def vectorize_text_large(text: str, l2: bool = False):
         return doc.vector.tolist()
     
 @app.get("/stvec/")
-async def vectorize_text_st(text: str, l2: bool = False):
+async def vectorize_text_st(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = st_model.encode(text)
     if l2:
         return vector_normalize(doc).tolist()
@@ -124,7 +144,9 @@ async def vectorize_text_st(text: str, l2: bool = False):
         return doc.tolist()
     
 @app.get("/stvec768/")
-async def vectorize_text_sentence_transformer_768(text: str, l2: bool = False):
+async def vectorize_text_sentence_transformer_768(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = st_768_model.encode(text)
     if l2:
         return vector_normalize(doc).tolist()
@@ -132,12 +154,21 @@ async def vectorize_text_sentence_transformer_768(text: str, l2: bool = False):
         return doc.tolist()
     
 @app.get("/bertvec/")
-async def vectorize_text_bert(text: str, l2: bool = False):
+async def vectorize_text_bert(text: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
     doc = bert_nlp(text)
     if l2:
         return vector_normalize(doc).tolist()
     else:
         return doc.tolist()
+    
+@app.get("/instructorvec/")
+async def vectorize_text_instructor(text: str, instruction: str, l2: bool = False, stopwords: bool = True):
+    if not stopwords:
+        text = remove_stopwords(text)
+    embeddings = instructor_model.encode([[instruction,text]]).tolist()[0]
+    return embeddings
 
 @app.get("/ssim/")
 async def similarity_text_small(t1: str, t2: str):
@@ -184,8 +215,17 @@ async def splade_bow(text: str):
         
     return bow_rep
 
+@app.get("/stopwords/")
+async def test_stopword_removal(text: str):
+    return remove_stopwords(text)
+
 @app.get("/simdiff/")
-async def similarity_model_differences(t1: str, t2: str):
+async def similarity_model_differences(t1: str, t2: str, stopwords: bool = True):
+
+    # Remove stopwords if needed
+    if not stopwords:
+        t1 = remove_stopwords(t1)
+        t2 = remove_stopwords(t2)
 
     # Similiarty output
     sim_output = {"string1": t1, "string2": t2}
@@ -225,5 +265,12 @@ async def similarity_model_differences(t1: str, t2: str):
     v2 = bert_nlp(t2).tolist()
     bert_sim = similarity(v1, v2)
     sim_output["bert"] = bert_sim
+
+    # Instructor encode
+    instruction = "Represent the sentence:"
+    v1 = embeddings = instructor_model.encode([[instruction,t1]]).tolist()[0]
+    v2 = embeddings = instructor_model.encode([[instruction,t2]]).tolist()[0]
+    instruct_sim = similarity(v1, v2)
+    sim_output["instruct"] = instruct_sim
 
     return sim_output
