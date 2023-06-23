@@ -7,6 +7,8 @@ from scipy.spatial.distance import euclidean
 import torch
 from transformers import BertModel, BertTokenizer, AutoModelForMaskedLM, AutoTokenizer
 from splade.models.transformer_rep import Splade
+from InstructorEmbedding import INSTRUCTOR
+from sentence_transformers import SentenceTransformer
 
 # Load the spacy model that you have installed
 nlp_small = spacy.load('en_core_web_sm')
@@ -29,5 +31,10 @@ splade_model.eval()
 tokenizer = AutoTokenizer.from_pretrained(model_type_or_dir)
 reverse_voc = {v: k for k, v in tokenizer.vocab.items()}
 
+# Load a huggingface 384d sentence transformer
+st_768_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+
+# Instructor model
+instructor_model = INSTRUCTOR('hkunlp/instructor-large')
 
 print("Preloaded big files")
